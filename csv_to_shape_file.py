@@ -3,7 +3,7 @@ import geopandas as gpd
 from shapely.geometry import Point
 
 # Specify the input CSV file path and the output shapefile path
-csv_file = "WDOT_Noise_Reduction_Test_Sign_Face_projected_lat_lon.csv"  # Replace with your CSV file path
+csv_file = "WDOT/WDOT_Noise_Reduction_Test_Sign_Face_projected_lat_lon.csv"  # Replace with your CSV file path
 output_shapefile = "WDOT_Noise_Reduction_Test_Sign_Face_projected_lat_lon.shp"  # Replace with desired output path
 
 # Read the CSV file

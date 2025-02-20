@@ -7,6 +7,25 @@ from sklearn.neighbors import BallTree
 import geopandas as gpd
 from shapely.geometry import Point
 
+
+def haversine_distance(lat1, lon1, lat2, lon2):
+    """
+    Calculate the great-circle distance between two points
+    on the Earth specified in decimal degrees.
+    """
+    # Convert decimal degrees to radians
+    lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
+
+    # Difference in coordinates
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+
+    # Haversine formula
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
+    c = 2 * np.arcsin(np.sqrt(a))
+    r = 6371000  # Radius of Earth in meters
+    return c * r
+
 def match_signs_with_balltree():
     """
     Matches road signs from two different datasets using spatial proximity.
@@ -32,8 +51,8 @@ def match_signs_with_balltree():
     # ---------------------------------------------------------------------
     # 1. File paths for your two datasets (update these paths as needed)
     # ---------------------------------------------------------------------
-    mach9_file = r"WDOT/WDOT_Before_Sign_Face_projected_lat_lon.csv"
-    client_file = r"WDOT/WDOT_Noise_Reduction_Test_Sign_Face_projected_lat_lon.csv"
+    mach9_file = r"../WDOT/WDOT_Before_Sign_Face_projected_lat_lon.csv"
+    client_file = r"../WDOT/WDOT_Noise_Reduction_Test_Sign_Face_projected_lat_lon.csv"
 
     # ---------------------------------------------------------------------
     # 2. Read in CSV files (using low_memory=False to reduce dtype warnings)
@@ -115,6 +134,7 @@ def match_signs_with_balltree():
     unmatched_client = total_client - df_client["matched"].sum()
 
     print("\n--- Matching Summary ---")
+    print(f"Buffer Distance Used: {DISTANCE_THRESHOLD} meters")
     print(f"Total signs in file 1: {total_mach9}")
     print(f"Total signs in file 2: {total_client}")
     print(f"Number of matched signs: {matched_signs}")
@@ -124,7 +144,7 @@ def match_signs_with_balltree():
     # ---------------------------------------------------------------------
     # 10. Prepare output folder and filenames
     # ---------------------------------------------------------------------
-    output_folder = os.path.join("WDOT", "comparison_data")
+    output_folder = os.path.join("../WDOT", "comparison_data")
     os.makedirs(output_folder, exist_ok=True)
 
     matched_csv = os.path.join(output_folder, "matched.csv")

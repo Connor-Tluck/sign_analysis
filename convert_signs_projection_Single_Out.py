@@ -24,7 +24,7 @@ def convert_projection(input_file, output_folder=None, return_df=False):
     - If `return_df` is True, returns the transformed DataFrame.
     """
     # Create a Transformer from EPSG:6599 to EPSG:4326 (WGS84).
-    transformer = pyproj.Transformer.from_crs("EPSG:6599", "EPSG:4326", always_xy=True)
+    transformer = pyproj.Transformer.from_crs("EPSG:32614", "EPSG:4326", always_xy=True)
 
     # Read the CSV file.
     df = pd.read_csv(input_file)
@@ -108,7 +108,7 @@ if __name__ == "__main__":
     # Example usage:
     #  - If 'input_path' is a single CSV file, one converted CSV is created.
     #  - If 'input_path' is a folder of CSV files, one combined CSV is created with all features.
-    input_path = "./WDOT/TESTING"  # CSV file or folder containing CSV files
-    output_folder = "./WDOT/BULK_TEST"  # Where converted CSV(s) will be saved
+    input_path = "./TxDot/Sign.csv"  # CSV file or folder containing CSV files
+    output_folder = "./TxDot"  # Where converted CSV(s) will be saved
 
     process_input(input_path, output_folder)

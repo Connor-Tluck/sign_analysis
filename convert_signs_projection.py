@@ -32,7 +32,7 @@ def convert_projection(input_file, output_folder):
     df = pd.read_csv(input_file)
 
     # Create a Transformer from EPSG:6599 (State Plane) to EPSG:4326 (WGS84).
-    transformer = pyproj.Transformer.from_crs("EPSG:6599", "EPSG:4326", always_xy=True)
+    transformer = pyproj.Transformer.from_crs("EPSG:32615", "EPSG:4326", always_xy=True)
 
     # Transform the X, Y columns into Longitude, Latitude.
     df["Longitude"], df["Latitude"] = transformer.transform(df["X"].values, df["Y"].values)
@@ -72,9 +72,9 @@ def process_input(input_path, output_folder):
 
 if __name__ == "__main__":
     # Define input path (can be a single CSV file or a folder containing CSV files).
-    input_path = "./WDOT/TESTING"  # Update this to your CSV file or folder path.
+    input_path = "./TxDot/Signs.csv"  # Update this to your CSV file or folder path.
 
     # Define the output folder where converted CSVs will be saved.
-    output_folder = "./WDOT/BULK_TEST"  # Update if needed.
+    output_folder = "./TxDot"  # Update if needed.
 
     process_input(input_path, output_folder)
