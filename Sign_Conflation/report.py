@@ -12,19 +12,19 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle, PageBreak
 )
 from duplicates import remove_duplicate_signs
-from distance_matching import run_conflation_for_threshold
+from distance_matching import run_conflation_for_threshold  # 5m distance matching
 from sklearn.cluster import KMeans
 
 # ---------------------
 # Global settings and schema mappings
 # ---------------------
-GOOGLE_API_KEY = "AIzaSyAPxlcLCy9eZBMFqr5IVPpiCvWBTkqsw6M"  # Replace with your actual API key
+GOOGLE_API_KEY = 'x'  # Replace with your actual API key
 
 mach9_schema = {"lat": "Latitude", "lon": "Longitude", "mutcd": "MUTCD"}
 client_schema = {"lat": "CC_LATITUDE", "lon": "CC_LONGITUDE", "mutcd": "MUTCD"}
 
 REMOVE_DUPLICATES = True
-BUFFER_LIST = [5, 10, 12]
+DISTANCE_THRESHOLD = 5  # 5 meters
 
 # Sign category prefix mappings
 SIGN_CATEGORY_PREFIXES = {
@@ -41,26 +41,18 @@ SIGN_CATEGORY_PREFIXES = {
     "RR": "RR-Series (Railroad Crossing Signs)"
 }
 
-from PIL import Image as PILImage
-from reportlab.platypus import Image
 
 def preserve_aspect_image(path, desired_width, hAlign='CENTER'):
-    """
-    Opens an image from `path`, calculates the appropriate height to
-    maintain aspect ratio for the given `desired_width`, and returns
-    a ReportLab Image object with that size.
-    """
+    """Maintains aspect ratio for images placed into the PDF."""
+    from reportlab.platypus import Paragraph
     if not os.path.exists(path):
         return Paragraph("Image not found", getSampleStyleSheet()['BodyText'])
-
     pil_img = PILImage.open(path)
     w, h = pil_img.size
     aspect_ratio = h / float(w)
-
-    # Calculate new height to maintain the original aspect ratio
     new_height = desired_width * aspect_ratio
-
     return Image(path, width=desired_width, height=new_height, hAlign=hAlign)
+
 
 def get_category_from_mutcd(mutcd_code):
     if not isinstance(mutcd_code, str):
@@ -83,10 +75,7 @@ def categorize_signs(df, mutcd_col="MUTCD"):
 # Google API functions
 # ---------------------
 def fetch_street_view_image(lat, lon, output_path, heading=180, pitch=-10, fov=90, size="400x400"):
-    """
-    Fetches a Google Street View image for the specified latitude and longitude.
-    Saves the image to output_path.
-    """
+    """Fetches a Google Street View image and saves it locally."""
     base_url = "https://maps.googleapis.com/maps/api/streetview"
     params = {
         "size": size,
@@ -111,10 +100,7 @@ def fetch_street_view_image(lat, lon, output_path, heading=180, pitch=-10, fov=9
 
 
 def fetch_street_view_metadata(lat, lon, heading=180, pitch=-10, fov=90, size="400x400"):
-    """
-    Fetches metadata from Google Street View for the specified latitude and longitude.
-    Returns metadata as a JSON dict, including the capture date if available.
-    """
+    """Fetches Google Street View metadata (including capture date)."""
     base_url = "https://maps.googleapis.com/maps/api/streetview/metadata"
     params = {
         "size": size,
@@ -137,10 +123,7 @@ def fetch_street_view_metadata(lat, lon, heading=180, pitch=-10, fov=90, size="4
 
 
 def fetch_static_map_image(lat, lon, output_path, zoom=16, size="400x400", maptype="roadmap"):
-    """
-    Fetches a Google Static Map image for the specified latitude and longitude.
-    Saves the image to output_path.
-    """
+    """Fetches a Google Static Map image and saves it locally."""
     base_url = "https://maps.googleapis.com/maps/api/staticmap"
     params = {
         "center": f"{lat},{lon}",
@@ -165,13 +148,10 @@ def fetch_static_map_image(lat, lon, output_path, zoom=16, size="400x400", mapty
 
 
 # ---------------------
-# Image helper function to fix vertical skew
+# Image helper functions
 # ---------------------
 def create_fixed_image(image_path, fixed_width):
-    """
-    Opens an image from image_path, calculates the appropriate height to
-    maintain aspect ratio for the given fixed_width, and returns a ReportLab Image.
-    """
+    """Loads an image from `image_path` and fixes width while maintaining aspect ratio."""
     if not os.path.exists(image_path):
         return None
     pil_img = PILImage.open(image_path)
@@ -182,6 +162,8 @@ def create_fixed_image(image_path, fixed_width):
 
 
 def create_logo_image(logo_path, max_width=200, max_height=80):
+    """Loads a logo image from `logo_path` with max width/height constraints."""
+    from reportlab.platypus import Paragraph
     if not os.path.exists(logo_path):
         return Paragraph("Logo not found", getSampleStyleSheet()['BodyText'])
     pil_img = PILImage.open(logo_path)
@@ -196,9 +178,10 @@ def create_logo_image(logo_path, max_width=200, max_height=80):
 
 
 # ---------------------
-# Dummy Chart Generator (for charts not yet fully implemented)
+# Chart Generators
 # ---------------------
 def generate_dummy_chart(chart_type, filename):
+    """Generates placeholder charts (venn, box, heatmap, line) for demonstration."""
     plt.figure(figsize=(6, 4))
     if chart_type == 'venn':
         plt.text(0.5, 0.5, "Venn Diagram Placeholder", fontsize=14, ha='center')
@@ -228,9 +211,7 @@ def generate_dummy_chart(chart_type, filename):
 
 
 def generate_sign_type_distribution_chart(mach9_cat_counts):
-    """
-    Generates a bar chart showing the actual counts per sign category for Mach9.
-    """
+    """Bar chart of sign categories for Mach9 dataset."""
     categories = list(mach9_cat_counts.keys())
     counts = [mach9_cat_counts[c] for c in categories]
     plt.figure(figsize=(8, 4))
@@ -247,17 +228,86 @@ def generate_sign_type_distribution_chart(mach9_cat_counts):
     return sign_type_chart_path
 
 
+def generate_key_metrics_bar_chart(mach9_total, client_total, matched_signs, unmatched_mach9, unmatched_client):
+    """
+    A bar chart to visualize main comparison metrics: total, matched, unmatched, etc.
+    Color-coded for clarity.
+    """
+    bar_chart_path = 'bar_chart_metrics.png'
+    labels = ["Mach9 Total", "Client Total", "Matched (5m)", "M9 Unmatched", "Client Unmatched"]
+    values = [mach9_total, client_total, matched_signs, unmatched_mach9, unmatched_client]
+    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd", "#d62728"]  # Distinctive colors
+    plt.figure(figsize=(8, 4))
+    bars = plt.bar(labels, values, color=colors)
+    plt.title("Key Metrics Comparison (Distance Matching)", fontsize=14)
+    plt.xticks(rotation=45, ha="right")
+    for bar in bars:
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2.0, yval, str(yval), ha="center", va="bottom")
+    plt.tight_layout()
+    plt.savefig(bar_chart_path, bbox_inches='tight')
+    plt.close()
+    return bar_chart_path
+
+
+def generate_percent_diff_chart(duplicates_info):
+    """
+    Creates a stacked bar chart to show raw duplicates vs. unique for Mach9 and Client,
+    as a percentage of each dataset's raw total.
+    """
+    chart_path = 'percent_diff_chart.png'
+
+    mach9_raw = duplicates_info["Mach9"]["original_count"]
+    mach9_dups = duplicates_info["Mach9"]["duplicates_removed"]
+    mach9_uniq = duplicates_info["Mach9"]["unique_count"]
+
+    client_raw = duplicates_info["Client"]["original_count"]
+    client_dups = duplicates_info["Client"]["duplicates_removed"]
+    client_uniq = duplicates_info["Client"]["unique_count"]
+
+    # Convert to percentages of each dataset's raw total
+    mach9_dups_perc = (mach9_dups / mach9_raw * 100) if mach9_raw else 0
+    mach9_uniq_perc = (mach9_uniq / mach9_raw * 100) if mach9_raw else 0
+    client_dups_perc = (client_dups / client_raw * 100) if client_raw else 0
+    client_uniq_perc = (client_uniq / client_raw * 100) if client_raw else 0
+
+    # We'll do a stacked bar chart with 2 bars: one for Mach9, one for Client
+    labels = ["Mach9", "Client"]
+    dups_perc = [mach9_dups_perc, client_dups_perc]
+    uniq_perc = [mach9_uniq_perc, client_uniq_perc]
+
+    plt.figure(figsize=(6, 4))
+    bottom_bar = plt.bar(labels, dups_perc, color="#ff9999", label="Duplicates (%)")
+    top_bar = plt.bar(labels, uniq_perc, bottom=dups_perc, color="#99ff99", label="Unique (%)")
+
+    for i, bar in enumerate(bottom_bar):
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2.0, yval/2, f"{yval:.1f}%", ha="center", va="center", color="black")
+    for i, bar in enumerate(top_bar):
+        bottom_val = dups_perc[i]
+        yval = bottom_val + bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2.0, bottom_val + bar.get_height()/2, f"{bar.get_height():.1f}%",
+                 ha="center", va="center", color="black")
+
+    plt.title("Percent Differences: Duplicates vs. Unique", fontsize=14)
+    plt.ylabel("Percentage of Raw Total")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(chart_path, bbox_inches='tight')
+    plt.close()
+    return chart_path
+
+
 # ---------------------
-# Report Generation Function
+# Main Report Generation
 # ---------------------
 def generate_report(mach9_csv, client_csv, output_pdf, logo_path):
-    # Load data
+    # 1. Load data
     df_mach9 = pd.read_csv(mach9_csv, low_memory=False)
     df_client = pd.read_csv(client_csv, low_memory=False)
-
     styles = getSampleStyleSheet()
 
-    # Standardize client columns
+    # 2. Standardize client columns
     if client_schema["lat"] in df_client.columns:
         df_client.rename(columns={client_schema["lat"]: "Latitude"}, inplace=True)
     else:
@@ -273,118 +323,145 @@ def generate_report(mach9_csv, client_csv, output_pdf, logo_path):
     if "MUTCD" not in df_mach9.columns:
         df_mach9["MUTCD"] = "Unknown"
 
-    # Remove duplicates if enabled
-    duplicates_info = {}
+    # 3. Capture raw counts (before duplicates)
+    raw_mach9_count = len(df_mach9)
+    raw_client_count = len(df_client)
+
+    # 4. Remove duplicates if enabled
+    duplicates_info = {
+        "Mach9": {
+            "original_count": raw_mach9_count,
+            "duplicates_removed": 0,
+            "unique_count": raw_mach9_count
+        },
+        "Client": {
+            "original_count": raw_client_count,
+            "duplicates_removed": 0,
+            "unique_count": raw_client_count
+        }
+    }
     if REMOVE_DUPLICATES:
-        orig_count_mach9 = len(df_mach9)
+        df_mach9_pre = len(df_mach9)
         df_mach9, dup_removed_mach9 = remove_duplicate_signs(df_mach9, "Latitude", "Longitude", decimals=5)
-        unique_count_mach9 = len(df_mach9)
-        orig_count_client = len(df_client)
+        df_client_pre = len(df_client)
         df_client, dup_removed_client = remove_duplicate_signs(df_client, "Latitude", "Longitude", decimals=5)
-        unique_count_client = len(df_client)
-        duplicates_info["Mach9"] = {"original_count": orig_count_mach9, "duplicates_removed": dup_removed_mach9,
-                                      "unique_count": unique_count_mach9}
-        duplicates_info["Client"] = {"original_count": orig_count_client, "duplicates_removed": dup_removed_client,
-                                       "unique_count": unique_count_client}
 
-    # Compute total counts
-    total_mach9 = len(df_mach9)
-    total_client = len(df_client)
+        duplicates_info["Mach9"]["duplicates_removed"] = dup_removed_mach9
+        duplicates_info["Mach9"]["unique_count"] = len(df_mach9)
+        duplicates_info["Client"]["duplicates_removed"] = dup_removed_client
+        duplicates_info["Client"]["unique_count"] = len(df_client)
 
-    # Compute location sets (using 5-decimal precision)
-    set_mach9_locations = set()
-    for _, row in df_mach9.iterrows():
-        try:
-            lat = round(float(row["Latitude"]), 5)
-            lon = round(float(row["Longitude"]), 5)
-            set_mach9_locations.add((lat, lon))
-        except:
-            continue
-    set_client_locations = set()
-    for _, row in df_client.iterrows():
-        try:
-            lat = round(float(row["Latitude"]), 5)
-            lon = round(float(row["Longitude"]), 5)
-            set_client_locations.add((lat, lon))
-        except:
-            continue
+    # 5. Distance-based matching for 5m
+    distance_result = run_conflation_for_threshold(
+        df_mach9, df_client,
+        threshold=DISTANCE_THRESHOLD,
+        mach9_lat_col="Latitude", mach9_lon_col="Longitude",
+        client_lat_col="Latitude", client_lon_col="Longitude",
+        base_output_folder="distance_output"
+    )
+    dist_metrics = distance_result["metrics"]
+    total_mach9 = dist_metrics["total_mach9"]       # deduplicated Mach9
+    total_client = dist_metrics["total_client"]     # deduplicated Client
+    matched_signs = dist_metrics["matched_signs"]
+    unmatched_mach9 = dist_metrics["unmatched_mach9"]
+    unmatched_client = dist_metrics["unmatched_client"]
 
-    missing_in_client_location = len(set_mach9_locations - set_client_locations)
-    missing_in_mach9_location = len(set_client_locations - set_mach9_locations)
-    perc_missing_in_client_location = (missing_in_client_location / total_mach9 * 100) if total_mach9 else 0
-    perc_missing_in_mach9_location = (missing_in_mach9_location / total_client * 100) if total_client else 0
+    # Also retrieve matched/unmatched DataFrames for examples
+    df_matched = distance_result["df_matched"]     # Mach9 matched records
+    df_unmatched = distance_result["df_unmatched"] # Mach9 or Client unmatched
 
-    # Categorize signs
+    # 6. Categorize signs (deduplicated DataFrames)
     mach9_cat_counts = categorize_signs(df_mach9, mutcd_col="MUTCD")
     client_cat_counts = categorize_signs(df_client, mutcd_col="MUTCD")
 
-    # Define Executive Summary + Approach text (updated with new metrics)
+    # 7. Executive Summary + Approach
     summary_text = f"""
 <b>Executive Summary</b><br/><br/>
-This report compares Mach9's LiDAR-extracted sign features with a legacy client dataset.
+This report compares Mach9's LiDAR-extracted sign features with a legacy client dataset using a 5‑meter distance matching approach.
 Key findings include:<br/>
-&nbsp;&nbsp;&bull;&nbsp; Total Mach9 Signs: {total_mach9}<br/>
-&nbsp;&nbsp;&bull;&nbsp; Total Client Signs: {total_client}<br/>
-&nbsp;&nbsp;&bull;&nbsp; Signs in Mach9 not in Client (by location): {missing_in_client_location} ({perc_missing_in_client_location:.2f}%)<br/>
-&nbsp;&nbsp;&bull;&nbsp; Signs in Client not in Mach9 (by location): {missing_in_mach9_location} ({perc_missing_in_mach9_location:.2f}%)<br/>
-&nbsp;&nbsp;&bull;&nbsp; Duplicates Removed - Mach9: {duplicates_info["Mach9"]["duplicates_removed"]}, Client: {duplicates_info["Client"]["duplicates_removed"]}<br/><br/>
+&nbsp;&nbsp;&bull;&nbsp; Total Mach9 Signs (Raw): {duplicates_info["Mach9"]["original_count"]}<br/>
+&nbsp;&nbsp;&bull;&nbsp; Total Client Signs (Raw): {duplicates_info["Client"]["original_count"]}<br/>
+&nbsp;&nbsp;&bull;&nbsp; Duplicates Removed - Mach9: {duplicates_info["Mach9"]["duplicates_removed"]}, Client: {duplicates_info["Client"]["duplicates_removed"]}<br/>
+&nbsp;&nbsp;&bull;&nbsp; Total Mach9 (No Duplicates): {total_mach9}<br/>
+&nbsp;&nbsp;&bull;&nbsp; Total Client (No Duplicates): {total_client}<br/>
+&nbsp;&nbsp;&bull;&nbsp; Matched Signs (within 5 m): {matched_signs}<br/>
+&nbsp;&nbsp;&bull;&nbsp; Unique to Mach9: {unmatched_mach9}<br/>
+&nbsp;&nbsp;&bull;&nbsp; Unique to Client: {unmatched_client}<br/><br/>
 <b>Approach and Methodology</b><br/>
 1. Standardize column names for latitude, longitude, and MUTCD.<br/>
-2. Fill missing MUTCD codes with 'Unknown' to avoid classification errors.<br/>
-3. Remove duplicates using coordinate precision.<br/>
-4. Compute key metrics based on location and MUTCD code comparisons.<br/>
+2. Remove duplicates based on coordinate precision.<br/>
+3. Run a distance matching algorithm (5‑meter buffer) via a BallTree (haversine metric).<br/>
+4. Compute key metrics based on the matching results.<br/>
 5. Generate charts to illustrate distribution, clustering, and discrepancies.
 """
 
-    # Key Metrics Table (slimmer with revised rows)
-    data_metrics = [
-        ['Metric', 'Mach9 Dataset', 'Client Dataset', 'Percentage'],
-        ['Total Signs', total_mach9, total_client,
-         f"{abs(total_mach9 - total_client) / max(total_mach9, total_client) * 100:.2f}%" if max(total_mach9, total_client) else "N/A"],
-        ['Missing in Client (by location)', missing_in_client_location, '-', f"{perc_missing_in_client_location:.2f}%"],
-        ['Missing in Mach9 (by location)', '-', missing_in_mach9_location, f"{perc_missing_in_mach9_location:.2f}%"],
-        ['Duplicates Removed', duplicates_info["Mach9"]["duplicates_removed"], duplicates_info["Client"]["duplicates_removed"], '-']
+    # 8. Build the two new tables:
+
+    # ---- Table 1: Overview Table ----
+    total_raw = duplicates_info["Mach9"]["original_count"] + duplicates_info["Client"]["original_count"]
+    mach9_raw_perc = (duplicates_info["Mach9"]["original_count"] / total_raw * 100) if total_raw else 0
+    client_raw_perc = (duplicates_info["Client"]["original_count"] / total_raw * 100) if total_raw else 0
+    mach9_dup_perc = 0
+    if duplicates_info["Mach9"]["original_count"]:
+        mach9_dup_perc = duplicates_info["Mach9"]["duplicates_removed"] / duplicates_info["Mach9"]["original_count"] * 100
+    client_dup_perc = 0
+    if duplicates_info["Client"]["original_count"]:
+        client_dup_perc = duplicates_info["Client"]["duplicates_removed"] / duplicates_info["Client"]["original_count"] * 100
+    combined_dedup = duplicates_info["Mach9"]["unique_count"] + duplicates_info["Client"]["unique_count"]
+    mach9_no_dup_perc = (duplicates_info["Mach9"]["unique_count"] / combined_dedup * 100) if combined_dedup else 0
+    client_no_dup_perc = (duplicates_info["Client"]["unique_count"] / combined_dedup * 100) if combined_dedup else 0
+
+    data_overview = [
+        ["Metric",                          "Mach9",                                            "Client",                                            "Mach9 Percentage",                           "Client Percentage"],
+        ["Total Signs (Raw)",              duplicates_info["Mach9"]["original_count"],         duplicates_info["Client"]["original_count"],         f"{mach9_raw_perc:.2f}%",                     f"{client_raw_perc:.2f}%"],
+        ["Duplicates",                     duplicates_info["Mach9"]["duplicates_removed"],     duplicates_info["Client"]["duplicates_removed"],     f"{mach9_dup_perc:.2f}%",                     f"{client_dup_perc:.2f}%"],
+        ["Total Signs (without duplicates)",duplicates_info["Mach9"]["unique_count"],          duplicates_info["Client"]["unique_count"],          f"{mach9_no_dup_perc:.2f}%",                  f"{client_no_dup_perc:.2f}%"]
     ]
 
-    # Generate Total Sign Count Bar Chart with labels
-    bar_chart_path = 'bar_chart_total_counts.png'
-    plt.figure(figsize=(6, 4))
-    bars = plt.bar(['Mach9', 'Client'], [total_mach9, total_client], color=['#1f77b4', '#ff7f0e'])
-    plt.title('Total Signs Count Comparison', fontsize=14)
-    plt.ylabel('Number of Signs', fontsize=12)
-    for bar in bars:
-        yval = bar.get_height()
-        plt.text(bar.get_x() + bar.get_width() / 2.0, yval, int(yval), ha='center', va='bottom')
-    plt.tight_layout()
-    plt.savefig(bar_chart_path, bbox_inches='tight')
-    plt.close()
+    # ---- Table 2: Comparison Table ----
+    matched_mach9_perc = (matched_signs / total_mach9 * 100) if total_mach9 else 0
+    unique_mach9_perc = (unmatched_mach9 / total_mach9 * 100) if total_mach9 else 0
+    unique_client_perc = (unmatched_client / total_client * 100) if total_client else 0
 
-    # Generate other charts (using dummy generators where applicable)
+    data_comparison = [
+        ["Metric", "Count", "Total in Dataset", "Percentage", "Notes"],
+        ["Matched Signs (5m)",
+         matched_signs,
+         total_mach9,
+         f"{matched_mach9_perc:.2f}%",
+         "Signs matched across both datasets within 5 m buffer."],
+        ["Unique Signs in Mach9",
+         unmatched_mach9,
+         total_mach9,
+         f"{unique_mach9_perc:.2f}%",
+         "Signs in the Mach9 dataset not present in the Client dataset."],
+        ["Unique Signs in Client",
+         unmatched_client,
+         total_client,
+         f"{unique_client_perc:.2f}%",
+         "Signs in the Client dataset not present in the Mach9 dataset."]
+    ]
+
+    # 9. Generate Charts
+    bar_chart_path = generate_key_metrics_bar_chart(
+        mach9_total=total_mach9,
+        client_total=total_client,
+        matched_signs=matched_signs,
+        unmatched_mach9=unmatched_mach9,
+        unmatched_client=unmatched_client
+    )
+    percent_diff_chart_path = generate_percent_diff_chart(duplicates_info)
     venn_chart_path = 'venn_diagram.png'
     generate_dummy_chart('venn', venn_chart_path)
     box_plot_path = 'box_plot_confidence.png'
     generate_dummy_chart('box', box_plot_path)
-    # Instead of a dummy stacked bar, generate an actual sign type distribution chart (Mach9 only)
     sign_type_chart_path = generate_sign_type_distribution_chart(mach9_cat_counts)
     heatmap_path = 'heatmap_sign_density.png'
     generate_dummy_chart('heatmap', heatmap_path)
     line_chart_path = 'line_chart_temporal.png'
     generate_dummy_chart('line', line_chart_path)
 
-    # Detailed Error Analysis Chart (using location-based metrics)
-    error_chart_path = "error_analysis.png"
-    plt.figure(figsize=(6, 4))
-    error_labels = ["Missing in Client (by location)", "Missing in Mach9 (by location)"]
-    error_values = [missing_in_client_location, missing_in_mach9_location]
-    plt.bar(error_labels, error_values, color=["purple", "red"])
-    plt.title("Error Analysis: Missing in Client vs Missing in Mach9", fontsize=14)
-    for i, v in enumerate(error_values):
-        plt.text(i, v + 0.5, str(v), ha="center")
-    plt.tight_layout()
-    plt.savefig(error_chart_path, bbox_inches='tight')
-    plt.close()
-
-    # Spatial Distribution and Cluster Analysis - generate charts for each dataset
+    # 10. Spatial Distribution and Cluster Analysis
     cluster_chart_mach9 = "cluster_analysis_mach9.png"
     if "Longitude" in df_mach9.columns and "Latitude" in df_mach9.columns and not df_mach9.empty:
         coords = df_mach9[["Longitude", "Latitude"]].dropna().values
@@ -410,7 +487,7 @@ Key findings include:<br/>
         kmeans = KMeans(n_clusters=k, random_state=0).fit(coords)
         cluster_labels = kmeans.labels_
         plt.figure(figsize=(6, 4))
-        scatter = plt.scatter(coords[:, 0], coords[:, 1], c=cluster_labels, cmap="plasma", s=10)
+        scatter = plt.scatter(coords[:, 0], coords[:, 1], c=cluster_labels, cmap="viridis", s=10)
         plt.title("Cluster Analysis of Client Sign Locations", fontsize=14)
         plt.xlabel("Longitude")
         plt.ylabel("Latitude")
@@ -421,7 +498,7 @@ Key findings include:<br/>
     else:
         cluster_chart_client = None
 
-    # Sign Dimensions and Condition Analysis (Page 6)
+    # 11. Sign Dimensions and Condition Analysis
     dimension_chart_path = "dimension_analysis.png"
     if "Width" in df_mach9.columns and "Height" in df_mach9.columns:
         plt.figure(figsize=(6, 4))
@@ -435,7 +512,7 @@ Key findings include:<br/>
     else:
         dimension_chart_path = None
 
-    # Quality Metrics and Performance Evaluation (Page 7)
+    # 12. Quality Metrics and Performance Evaluation
     quality_chart_path = "quality_metrics.png"
     quality_metrics_text = ""
     if "Confidence" in df_mach9.columns and not df_mach9["Confidence"].isna().all():
@@ -456,7 +533,7 @@ Key findings include:<br/>
         quality_chart_path = None
         quality_metrics_text = "No confidence data found or insufficient data to display."
 
-    # Sign Category Breakdown Table (Page 4)
+    # 13. Sign Category Breakdown Table
     cat_table_data = [['Category', 'Mach9 Count', 'Client Count']]
     for c in sorted(set(mach9_cat_counts.keys()).union(client_cat_counts.keys())):
         mach9_count = mach9_cat_counts.get(c, 0)
@@ -464,96 +541,113 @@ Key findings include:<br/>
         cat_table_data.append([c, str(mach9_count), str(client_count)])
 
     # ---------------------
-    # Annotated Case Studies / Sample Comparisons (Page 8)
+    # 14. Case Studies and Examples
     # ---------------------
-    # Create folders for images if they don't exist
+    # We'll show 3 sections:
+    #  A) Unique Signs in Mach9 Dataset [unmatched_mach9]
+    #  B) Unique Signs in Client Dataset [unmatched_client]
+    #  C) Matching Signs [matched_signs]
+    #
+    # For each, we sample up to 10 examples from the relevant subset.
+
+    # Make sure folders for images exist
     street_folder = "street_view"
     map_folder = "map_view"
     os.makedirs(street_folder, exist_ok=True)
     os.makedirs(map_folder, exist_ok=True)
 
-    # Determine samples from Mach9 missing Client and Client missing Mach9 (based on location)
-    df_mach9_missing = df_mach9[df_mach9.apply(lambda row: (round(row["Latitude"], 5), round(row["Longitude"], 5)) not in set_client_locations, axis=1)]
-    df_client_missing = df_client[df_client.apply(lambda row: (round(row["Latitude"], 5), round(row["Longitude"], 5)) not in set_mach9_locations, axis=1)]
+    # Create a helper to build 10 examples from a given DataFrame
+    def build_examples_for_subset(df_subset, max_examples=10, dataset_label="Mach9"):
+        """
+        Returns a list of (image_row, description) for up to `max_examples` rows in df_subset.
+        We'll fetch street view, map images, and build a paragraph describing each sign.
+        """
+        from reportlab.platypus import Paragraph
 
-    sample_mach9 = df_mach9_missing.sample(n=min(5, len(df_mach9_missing)), random_state=42) if not df_mach9_missing.empty else pd.DataFrame()
-    sample_client = df_client_missing.sample(n=min(5, len(df_client_missing)), random_state=42) if not df_client_missing.empty else pd.DataFrame()
+        if df_subset.empty:
+            return []
 
-    annotated_df = pd.concat([sample_mach9.assign(Source="Mach9"), sample_client.assign(Source="Client")])
-    # If fewer than 10 examples, add some from the intersection (present in both datasets)
-    if len(annotated_df) < 10:
-        df_both = df_mach9[df_mach9.apply(lambda row: (round(row["Latitude"], 5), round(row["Longitude"], 5)) in set_client_locations, axis=1)]
-        extra_needed = 10 - len(annotated_df)
-        if not df_both.empty:
-            extra_samples = df_both.sample(n=min(extra_needed, len(df_both)), random_state=42)
-            extra_samples = extra_samples.assign(Source="Both")
-            annotated_df = pd.concat([annotated_df, extra_samples])
-    annotated_df = annotated_df.sample(n=min(10, len(annotated_df)), random_state=42)
+        # Random sample up to `max_examples`
+        df_sample = df_subset.sample(n=min(max_examples, len(df_subset)), random_state=42).copy()
+        examples_list = []
 
-    annotated_examples = []
-    for idx, row in annotated_df.iterrows():
-        code = row.get('MUTCD', 'Unknown')
-        text_info = row.get("Text", "No additional text")
-        lat = row.get("Latitude", None)
-        lon = row.get("Longitude", None)
-        source = row.get("Source", "Unknown")
-        # Build file paths for street and map images (include index to ensure uniqueness)
-        street_img_path = os.path.join(street_folder, f"{code}_{idx}_street.jpg")
-        map_img_path = os.path.join(map_folder, f"{code}_{idx}_map.jpg")
-        # Fetch images via Google APIs if coordinates available
-        if lat and lon and not pd.isna(lat) and not pd.isna(lon):
-            fetch_street_view_image(lat, lon, street_img_path, heading=180, pitch=-10, fov=90, size="400x400")
-            fetch_static_map_image(lat, lon, map_img_path, zoom=16, size="400x400")
-            metadata = fetch_street_view_metadata(lat, lon, heading=180, pitch=-10, fov=90, size="400x400")
-            capture_date = metadata.get("date", "Unknown") if metadata else "Unknown"
-        else:
-            capture_date = "Unknown"
-        # Get MUTCD sign image from folder "mutcd_signs"
-        mutcd_sign_path = os.path.join("../mutcd_signs", f"{code}.png")
-        # Create fixed images; render MUTCD sign image at 25% size (fixed width=25)
-        street_img = create_fixed_image(street_img_path, 120) if os.path.exists(street_img_path) else Paragraph(f"No Street View for <b>{code}</b>", styles['BodyText'])
-        map_img = create_fixed_image(map_img_path, 120) if os.path.exists(map_img_path) else Paragraph(f"No Map View for <b>{code}</b>", styles['BodyText'])
-        mutcd_img = create_fixed_image(mutcd_sign_path, 25) if os.path.exists(mutcd_sign_path) else Paragraph(f"No MUTCD Sign Image for <b>{code}</b>", styles['BodyText'])
-        # Build Google Street View URL
-        street_view_url = f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}"
-        # Build descriptive text with additional details
-        description = (f"<b>MUTCD:</b> {code}<br/>"
-                       f"<b>Text:</b> {text_info}<br/>"
-                       f"<b>Source:</b> {source}<br/>"
-                       f"<b>Lat/Lon:</b> {lat}, {lon}<br/>"
-                       f"<b>Street View URL:</b> <a href='{street_view_url}'>{street_view_url}</a><br/>"
-                       f"<b>Capture Date:</b> {capture_date}<br/>")
-        if source == "Mach9":
-            description += "Sign present in Mach9 dataset only (not found in Client dataset)."
-        elif source == "Client":
-            description += "Sign present in Client dataset only (not found in Mach9 dataset)."
-        else:
-            description += "Sign present in both datasets."
-        annotated_examples.append(( [street_img, map_img, mutcd_img], Paragraph(description, styles['BodyText']) ))
+        for idx, row in df_sample.iterrows():
+            # If the row is from Mach9, lat/lon are in (Latitude, Longitude)
+            # If from Client, we still use (Latitude, Longitude) because we standardized columns
+            lat = row.get("Latitude", None)
+            lon = row.get("Longitude", None)
+            code = row.get("MUTCD", "Unknown")
+            mach9_url = row.get("URL", "Unknown")
+            text_info = row.get("Text", "No additimonal text")
 
-    # Appendix text
+            # Build file paths for images
+            street_img_path = os.path.join(street_folder, f"{dataset_label}_{idx}_street.jpg")
+            map_img_path = os.path.join(map_folder, f"{dataset_label}_{idx}_map.jpg")
+
+            # Attempt to fetch images if lat/lon is valid
+            if lat and lon and not pd.isna(lat) and not pd.isna(lon):
+                fetch_street_view_image(lat, lon, street_img_path, heading=180, pitch=-10, fov=90, size="400x400")
+                fetch_static_map_image(lat, lon, map_img_path, zoom=16, size="400x400")
+                metadata = fetch_street_view_metadata(lat, lon, heading=180, pitch=-10, fov=90, size="400x400")
+                capture_date = metadata.get("date", "Unknown") if metadata else "Unknown"
+
+            else:
+                capture_date = "Unknown"
+
+            # Attempt to load MUTCD sign image
+            mutcd_sign_path = os.path.join("../mutcd_signs", f"{code}.png")
+            street_img = create_fixed_image(street_img_path, 120) if os.path.exists(street_img_path) else Paragraph(f"No Street View for <b>{code}</b>", styles['BodyText'])
+            map_img = create_fixed_image(map_img_path, 120) if os.path.exists(map_img_path) else Paragraph(f"No Map View for <b>{code}</b>", styles['BodyText'])
+            mutcd_img = create_fixed_image(mutcd_sign_path, 25) if os.path.exists(mutcd_sign_path) else Paragraph(f"No MUTCD Sign Image for <b>{code}</b>", styles['BodyText'])
+
+            # Build a Street View URL for direct link
+            street_view_url = f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}"
+            description = (f"<b>MUTCD:</b> {code}<br/>"
+                           f"<b>Text:</b> {text_info}<br/>"
+                           f"<b>Dataset:</b> {dataset_label}<br/>"
+                           f"<b>Lat/Lon:</b> {lat}, {lon}<br/>"
+                           f"<b>Street View URL:</b> <a href='{street_view_url}'>{street_view_url}</a><br/>"
+                            f"<b>Mach9 URL:</b> <a href='{mach9_url}'>{mach9_url}</a><br/>"
+                           f"<b>Capture Date:</b> {capture_date}<br/>")
+            examples_list.append(([street_img, map_img, mutcd_img],
+                                  Paragraph(description, styles['BodyText'])))
+        return examples_list
+
+    # Split the unmatched DataFrame by source
+    # (In distance_matching.py, "Source" is "File 1" or "File 2". We'll assume "File 1" = Mach9, "File 2" = Client.)
+    df_unmatched_mach9 = df_unmatched[df_unmatched["Source"] == "File 1"]
+    df_unmatched_client = df_unmatched[df_unmatched["Source"] == "File 2"]
+
+    # Build examples
+    examples_unique_mach9 = build_examples_for_subset(df_unmatched_mach9, max_examples=10, dataset_label="Mach9")
+    examples_unique_client = build_examples_for_subset(df_unmatched_client, max_examples=10, dataset_label="Client")
+    # For matched, we just sample from df_matched
+    # (We keep "File 1" = Mach9 lat/lon for fetching images)
+    # Note: If you want the client lat/lon for matched signs, you'd adjust accordingly.
+    examples_matched = build_examples_for_subset(df_matched, max_examples=10, dataset_label="Mach9_Matched")
+
+    # 15. Appendix text
     appendix_text = """
 <b>Extended Methodology:</b><br/>
 - Data standardization: Columns were aligned across datasets.<br/>
 - Duplicate removal: Duplicates were removed based on geographic coordinates (5 decimal precision).<br/>
+- Distance matching: A 5‑meter buffer was used with a BallTree and haversine metric for matching signs.<br/>
 - Spatial and cluster analysis: Data was analyzed for clustering and coverage patterns.<br/>
 - Quality metrics: Confidence scores and sign dimensions were evaluated.<br/><br/>
 <b>Glossary:</b><br/>
-- <i>Missing in Client (by location):</i> Signs present in Mach9 but absent in Client dataset based on location.<br/>
-- <i>Missing in Mach9 (by location):</i> Signs present in Client but absent in Mach9 dataset based on location.<br/>
+- <i>Matched Signs (5 m Buffer):</i> Signs within 5 meters across the two datasets.<br/>
+- <i>Unique Signs:</i> Signs present in one dataset but not in the other (by distance threshold).<br/>
 - <i>Duplicates Removed:</i> Duplicate sign entries removed during preprocessing.<br/>
-- <i>MUTCD Codes:</i> Standardized sign classification codes used by Mach9.<br/>
-- <i>Confidence Score:</i> A measure of detection certainty.<br/>
-- <i>Cluster Analysis:</i> Grouping of similar sign locations.
+- <i>MUTCD Codes:</i> Standardized sign classification codes used by Mach9.
 """
 
     # ---------------------
-    # Build the PDF using ReportLab's Platypus
+    # Build the PDF
     # ---------------------
     doc = SimpleDocTemplate(output_pdf, pagesize=letter)
     story = []
 
-    # Page 1: Cover Page
+    # --- Page 1: Cover Page ---
     story.append(Paragraph("Comparative Analysis of Sign Detections: Mach9 vs. Client Dataset", styles['Title']))
     story.append(Spacer(1, 12))
     story.append(Paragraph("Evaluating Accuracy, Coverage, and Completeness of Extracted Traffic Signs", styles['Heading2']))
@@ -565,15 +659,15 @@ Key findings include:<br/>
     story.append(Spacer(1, 48))
     story.append(PageBreak())
 
-    # Page 2: Combined Executive Summary and Approach
+    # --- Page 2: Executive Summary & Approach ---
     story.append(Paragraph(summary_text, styles['BodyText']))
     story.append(Spacer(1, 24))
     story.append(PageBreak())
 
-    # Page 3: Key Metrics and Dataset Comparison (including Detailed Error Analysis)
-    story.append(Paragraph("Key Metrics and Dataset Comparison", styles['Heading1']))
-    table_metrics = Table(data_metrics, hAlign='CENTER')
-    table_metrics.setStyle(TableStyle([
+    # --- Page 3: Table 1 (Overview Table) & Percent Differences Chart ---
+    story.append(Paragraph("Table 1: Overview Table", styles['Heading1']))
+    table_overview = Table(data_overview, hAlign='CENTER')
+    table_overview.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
@@ -582,18 +676,39 @@ Key findings include:<br/>
         ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
         ('GRID', (0, 0), (-1, -1), 1, colors.black)
     ]))
-    story.append(table_metrics)
+    story.append(table_overview)
     story.append(Spacer(1, 12))
-    if os.path.exists(bar_chart_path):
-        story.append(Image(bar_chart_path, width=400, hAlign='CENTER'))
-    story.append(Spacer(1, 12))
-    story.append(Paragraph("Detailed Error Analysis", styles['Heading2']))
-    story.append(Paragraph("The graph below shows errors: missing in Client vs missing in Mach9 based on location.", styles['BodyText']))
-    if os.path.exists(error_chart_path):
-        story.append(Image(error_chart_path, width=400, hAlign='CENTER'))
+
+    # Insert the stacked bar chart showing duplicates vs unique as percentages
+    story.append(Paragraph("Percent Differences Visualization", styles['Heading2']))
+    if os.path.exists(percent_diff_chart_path):
+        story.append(Image(percent_diff_chart_path, width=480, hAlign='CENTER'))
+    story.append(Spacer(1, 24))
     story.append(PageBreak())
 
-    # Page 4: Sign Category Breakdown
+    # --- Page 4: Table 2 (Comparison Table) & Key Metrics Bar Chart ---
+    story.append(Paragraph("Table 2: Comparison Table", styles['Heading1']))
+    table_comparison = Table(data_comparison, hAlign='CENTER')
+    table_comparison.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    story.append(table_comparison)
+    story.append(Spacer(1, 12))
+
+    # Insert the key metrics comparison bar chart
+    story.append(Paragraph("Key Metrics Comparison Bar Chart", styles['Heading2']))
+    if os.path.exists(bar_chart_path):
+        story.append(Image(bar_chart_path, width=480, hAlign='CENTER'))
+    story.append(Spacer(1, 24))
+    story.append(PageBreak())
+
+    # --- Page 5: Sign Category Breakdown ---
     story.append(Paragraph("Sign Category Breakdown", styles['Heading1']))
     final_cat_table = Table(cat_table_data, colWidths=[300, 100, 100], hAlign='CENTER')
     final_cat_table.setStyle(TableStyle([
@@ -610,61 +725,36 @@ Key findings include:<br/>
         story.append(Image(sign_type_chart_path, width=400, hAlign='CENTER'))
     story.append(PageBreak())
 
-    # Page 5: Spatial Distribution and Cluster Analysis (both datasets on one page)
+    # --- Page 6: Spatial Distribution and Cluster Analysis ---
     story.append(Paragraph("Spatial Distribution and Cluster Analysis", styles['Heading1']))
     spatial_text = "Below are the cluster analysis graphs for sign locations in each dataset."
     story.append(Paragraph(spatial_text, styles['BodyText']))
     story.append(Spacer(1, 12))
     row = []
     if cluster_chart_mach9 and os.path.exists(cluster_chart_mach9):
-        if cluster_chart_mach9 and os.path.exists(cluster_chart_mach9):
-            cell = [
-                Paragraph("Mach9 Dataset", styles['Heading2']),
-                preserve_aspect_image(cluster_chart_mach9, desired_width=200)
-            ]
-            row.append(cell)
+        cell_mach9 = [
+            Paragraph("Mach9 Dataset", styles['Heading2']),
+            preserve_aspect_image(cluster_chart_mach9, desired_width=200)
+        ]
+        row.append(cell_mach9)
     if cluster_chart_client and os.path.exists(cluster_chart_client):
-        if cluster_chart_mach9 and os.path.exists(cluster_chart_mach9):
-            cell = [
-                Paragraph("Client Dataset", styles['Heading2']),
-                preserve_aspect_image(cluster_chart_client, desired_width=200)
-            ]
-            row.append(cell)
+        cell_client = [
+            Paragraph("Client Dataset", styles['Heading2']),
+            preserve_aspect_image(cluster_chart_client, desired_width=200)
+        ]
+        row.append(cell_client)
     if row:
         table = Table([row], colWidths=[250, 250])
         table.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
         story.append(table)
     story.append(PageBreak())
 
-    # Page 6: Sign Dimensions and Condition Analysis
-    story.append(Paragraph("Sign Dimensions and Condition Analysis", styles['Heading1']))
-    dim_text = "Box plots below illustrate the distribution of sign widths and heights as captured in Mach9."
-    story.append(Paragraph(dim_text, styles['BodyText']))
+    # --- Page 9: Case Studies and Examples ---
+    # Section A: Unique Signs in Mach9
+    story.append(Paragraph(f"Unique Signs in Mach9 Dataset [{unmatched_mach9}]", styles['Heading1']))
     story.append(Spacer(1, 12))
-    if dimension_chart_path and os.path.exists(dimension_chart_path):
-        story.append(Image(dimension_chart_path, width=400, hAlign='CENTER'))
-    story.append(PageBreak())
-
-    # Page 7: Quality Metrics and Performance Evaluation
-    story.append(Paragraph("Quality Metrics and Performance Evaluation", styles['Heading1']))
-    if quality_chart_path and os.path.exists(quality_chart_path):
-        story.append(Paragraph("Confidence Score Distribution (Mach9).", styles['BodyText']))
-        story.append(Image(quality_chart_path, width=400, hAlign='CENTER'))
-        story.append(Spacer(1, 12))
-        story.append(Paragraph(quality_metrics_text, styles['BodyText']))
-    else:
-        story.append(Paragraph(quality_metrics_text, styles['BodyText']))
-    story.append(PageBreak())
-
-    # Page 8: Annotated Case Studies / Sample Comparisons
-    # Page 8: Annotated Case Studies / Sample Comparisons
-    story.append(Paragraph("Annotated Case Studies / Sample Comparisons", styles['Heading1']))
-    story.append(Spacer(1, 12))
-
-    if annotated_examples:
-        for imgs, desc in annotated_examples:
-            # Build a 3-column table for images with padding and a black border
-            # Reduce the column widths so the images do not overflow
+    if examples_unique_mach9:
+        for imgs, desc in examples_unique_mach9:
             image_table = Table([imgs], colWidths=[130, 130, 130], hAlign='CENTER')
             image_table.setStyle(TableStyle([
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
@@ -677,8 +767,6 @@ Key findings include:<br/>
             ]))
             story.append(image_table)
             story.append(Spacer(1, 6))
-
-            # Wrap the descriptive text in its own table with a black border
             text_table = Table([[desc]], colWidths=[390], hAlign='CENTER')
             text_table.setStyle(TableStyle([
                 ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
@@ -692,15 +780,85 @@ Key findings include:<br/>
             story.append(text_table)
             story.append(Spacer(1, 24))
     else:
-        story.append(Paragraph("No annotated examples available.", styles['BodyText']))
+        story.append(Paragraph("No unique Mach9 examples available.", styles['BodyText']))
 
     story.append(PageBreak())
 
-    # Page 9: Extended Methodology and Glossary (Appendix)
+    # --- Page 10: Unique Signs in Client, Matching Signs ---
+    # Section B: Unique Signs in Client
+    story.append(Paragraph(f"Unique Signs in Client Dataset [{unmatched_client}]", styles['Heading1']))
+    story.append(Spacer(1, 12))
+    if examples_unique_client:
+        for imgs, desc in examples_unique_client:
+            image_table = Table([imgs], colWidths=[130, 130, 130], hAlign='CENTER')
+            image_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 5),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+                ('TOPPADDING', (0, 0), (-1, -1), 5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                ('BOX', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(image_table)
+            story.append(Spacer(1, 6))
+            text_table = Table([[desc]], colWidths=[390], hAlign='CENTER')
+            text_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 5),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+                ('TOPPADDING', (0, 0), (-1, -1), 5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                ('BOX', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(text_table)
+            story.append(Spacer(1, 24))
+    else:
+        story.append(Paragraph("No unique Client examples available.", styles['BodyText']))
+
+    story.append(PageBreak())
+
+    # Section C: Matching Signs
+    story.append(Paragraph(f"Matching Signs [{matched_signs}]", styles['Heading1']))
+    story.append(Spacer(1, 12))
+    if examples_matched:
+        for imgs, desc in examples_matched:
+            image_table = Table([imgs], colWidths=[130, 130, 130], hAlign='CENTER')
+            image_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 5),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+                ('TOPPADDING', (0, 0), (-1, -1), 5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                ('BOX', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(image_table)
+            story.append(Spacer(1, 6))
+            text_table = Table([[desc]], colWidths=[390], hAlign='CENTER')
+            text_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 5),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+                ('TOPPADDING', (0, 0), (-1, -1), 5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                ('BOX', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(text_table)
+            story.append(Spacer(1, 24))
+    else:
+        story.append(Paragraph("No matched sign examples available.", styles['BodyText']))
+
+    story.append(PageBreak())
+
+    # --- Page 11: Extended Methodology and Glossary (Appendix) ---
     story.append(Paragraph("Extended Methodology and Glossary (Appendix)", styles['Heading1']))
     story.append(Paragraph(appendix_text, styles['BodyText']))
     story.append(PageBreak())
 
+    # Finally, build the PDF
     doc.build(story)
     print(f"Report generated successfully: {output_pdf}")
 
